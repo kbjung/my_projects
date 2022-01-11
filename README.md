@@ -17,3 +17,4 @@
   - 몇 종목 테스트 ver0.1(2021.12.20) [code(html)](https://kbjung.github.io/my_projects/주식자산평가/stock_evaluate_ver0.1.html)
 + 시각화
   - 전 고점 대비 변화 비율 시각화 ver0.2(2021.12.25)(2022.01.09) [code(html)](https://kbjung.github.io/my_projects/주식자산평가/stock_evaluate_ver0.2.html)
+  - 2020년 1월부터 종가, 변화비율 시각화 ver0.3(2022.01.11) [code(html)](https://kbjung.github.io/my_projects/주식자산평가/stock_evaluate_ver0.3.html)
