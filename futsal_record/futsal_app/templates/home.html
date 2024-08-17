@@ -1,0 +1,45 @@
+<!-- home.html -->
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/styles.css' %}">
+
+<h1>경기 목록</h1>
+
+<div class="game-overview">
+    {% for game in games %}
+    <div class="game-summary">
+        <h2>{{ game.date }} {{ game.location }} vs {{ game.opponent }}</h2>
+        <div class="overall-score">
+            <strong>{{ game.total_wins }}승 {{ game.total_draws }}무 {{ game.total_losses }}패</strong>
+        </div>
+        <div class="quarters">
+            {% for result in game.results %}
+            <div class="quarter">
+                <div class="quarter-label">{{ result.quarter }}Q</div>
+                <div class="quarter-score">{{ result.score }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="player-stats">
+            <h3>선수명단</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>이름</th>
+                        <th>골</th>
+                        <th>도움</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for player in game.players %}
+                    <tr>
+                        <td>{{ player.name }}</td>
+                        <td>{{ player.goals }}</td>
+                        <td>{{ player.assists }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</div>
