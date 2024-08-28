@@ -19,5 +19,6 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls), # 첫번째 : 접속할때 주소, 두번째 : 누가 처리할지
-    path('', include('futsal_app.urls')) # #localhost:8000으로 요청이 들어오면 futsal_app.urls로 전달
+    # path('', include('futsal_app.urls')) # #localhost:8000으로 요청이 들어오면 futsal_app.urls로 전달
+    path('', include('blog.urls')),
 ]
