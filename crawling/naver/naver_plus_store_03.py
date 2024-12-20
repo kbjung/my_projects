@@ -31,7 +31,6 @@ options.add_experimental_option("excludeSwitches", ["enable-logging"])
 # %%
 # 현재 크롬 버전 확인
 chrome_ver = ca.get_chrome_version().split('.')[0]
-chrome_ver
 
 # %%
 # # 크롬 드라이버 확인 및 설치(처음 한번만 실행)
@@ -227,7 +226,6 @@ df = df[['번호', '상세페이지링크', '이미지링크', '제품제목', '
 print(df.shape)
 
 # %%
-df.tail()
 
 # %%
 # # 무한 페이지 스크롤다운
@@ -250,21 +248,17 @@ df.tail()
 
 # %%
 current_date = time.strftime('%Y%m%d')
-current_date
 
 # %%
 current_datetime = time.strftime('%Y%m%d_%p_%I%M%S')
-current_datetime
 
 # %%
 # 현재 경로 확인
 code_path = os.getcwd().replace('\\', '/')
-code_path
 
 # %%
 # 수집한 파일 저장할 폴더 생성
-crawled_folder_path = os.path.join(code_path, 'crawled_data', current_date)
-crawled_folder_path
+crawled_folder_path = os.path.join(code_path, 'crawled_data', 'naver_plus_store', current_date)
 
 # %%
 os.makedirs(crawled_folder_path, exist_ok=True)
