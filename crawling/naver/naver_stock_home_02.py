@@ -17,6 +17,14 @@ url = 'https://finance.naver.com/' # 네이버 증권 > 홈
 req = requests.get(url)
 print(req)
 
+# robots.txt 규칙 확인
+robot_url = urljoin(url, '/robots.txt')
+rp = RobotFileParser()
+rp.set_url(robot_url)
+rp.read()
+print(robot_url)
+print(rp.can_fetch('*', url))
+
 # 정보 수집
 # html = req.content.decode('utf-8') # 한글 깨짐 해결 코드
 html = req.text
