@@ -20,6 +20,7 @@ import chromedriver_autoinstaller as ca
 # USB error 메세지 발생 해결을 위한 코드
 options = webdriver.ChromeOptions()
 options.add_experimental_option("excludeSwitches", ["enable-logging"])
+options.add_argument('headless')  # headless 모드 설정
 
 # %%
 # 현재 크롬 버전 확인
