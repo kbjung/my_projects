@@ -1,0 +1,16 @@
+{
+  "capital_fixed_krw": 500000,
+  "equity_krw": 500000,
+  "position_state": "NONE",
+  "symbol_in_position": null,
+  "entry_price": null,
+  "entry_time": null,
+  "entry_date": null,
+  "daily_entry_taken": true,
+  "daily_stop_triggered": false,
+  "weekly_mode": "1W",
+  "weekly_position_open": false,
+  "weekly_days_held": 0,
+  "last_updated": "2026-01-27T15:27:24.437080",
+  "version": "1.0"
+}

@@ -1,0 +1,21 @@
+# Security
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env/
+
+# Data & Logs
+logs/
+data/
+*.log
+*.csv
+
+# IDE
+.vscode/
+.idea/
