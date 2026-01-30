@@ -38,7 +38,15 @@ class KISAuth:
         self.base_url = os.getenv("KIS_BASE_URL", "https://openapi.koreainvestment.com:9443")
         
         if mock_mode is None:
-            self.mock_mode = os.getenv("KIS_MOCK_MODE", "true").lower() == "true"
+            env_mock = os.getenv("KIS_MOCK_MODE")
+            env_kis = os.getenv("KIS_ENV")
+
+            if env_mock is not None:
+                self.mock_mode = env_mock.strip().lower() == "true"
+            elif env_kis is not None:
+                self.mock_mode = env_kis.strip().lower() == "paper"
+            else:
+                self.mock_mode = True
         else:
             self.mock_mode = mock_mode
         

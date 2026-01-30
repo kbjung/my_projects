@@ -39,15 +39,6 @@ class StateManager:
     
     def _load_or_initialize(self) -> Dict[str, Any]:
         """상태 파일 로드 또는 초기화"""
-        if self.state_file.exists():
-            try:
-                with open(self.state_file, 'r', encoding='utf-8') as f:
-                    state = json.load(f)
-                logger.info(f"상태 파일 로드 완료: {self.state_file}")
-                return state
-            except Exception as e:
-                logger.error(f"상태 파일 로드 실패: {e}, 초기 상태로 시작")
-        
         # 초기 상태 (SPEC.md 기준)
         initial_state = {
             # Capital
@@ -72,12 +63,34 @@ class StateManager:
             
             # Metadata
             "last_updated": datetime.now().isoformat(),
+            "last_reset_date": None,
             "version": "1.0"
         }
+        
+        if self.state_file.exists():
+            try:
+                with open(self.state_file, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+                logger.info(f"상태 파일 로드 완료: {self.state_file}")
+                state = self._ensure_defaults(state, initial_state)
+                return state
+            except Exception as e:
+                logger.error(f"상태 파일 로드 실패: {e}, 초기 상태로 시작")
         
         self._save(initial_state)
         logger.info("초기 상태 생성 완료")
         return initial_state
+
+    def _ensure_defaults(self, state: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
+        """누락된 키를 기본값으로 보완"""
+        updated = False
+        for key, value in defaults.items():
+            if key not in state:
+                state[key] = value
+                updated = True
+        if updated:
+            self._save(state)
+        return state
     
     def _save(self, state: Dict[str, Any]) -> None:
         """상태를 파일에 저장"""
@@ -130,6 +143,11 @@ class StateManager:
         """주간 포지션 보유 영업일 수"""
         with self._lock:
             return self._state["weekly_days_held"]
+
+    def get_last_reset_date(self) -> Optional[str]:
+        """일일 리셋 일자 (YYYY-MM-DD)"""
+        with self._lock:
+            return self._state.get("last_reset_date")
     
     def get_all_state(self) -> Dict[str, Any]:
         """전체 상태 조회 (디버깅용)"""
@@ -180,6 +198,12 @@ class StateManager:
             self._state["weekly_days_held"] += 1
             self._save(self._state)
             logger.info(f"weekly_days_held = {self._state['weekly_days_held']}")
+
+    def set_last_reset_date(self, reset_date: datetime.date) -> None:
+        """일일 리셋 일자 저장"""
+        with self._lock:
+            self._state["last_reset_date"] = reset_date.isoformat()
+            self._save(self._state)
     
     # ========== Position Management ==========
     

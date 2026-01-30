@@ -37,7 +37,12 @@ def run_day5_test():
     logger.info("=" * 60)
     logger.info("Day 5: WEEKLY 전략 및 모드 전환 테스트 (Mock)")
     logger.info("=" * 60)
-    
+
+    # 이전 테스트 상태 초기화
+    state_path = Path(__file__).parent / "output" / "state.json"
+    if state_path.exists():
+        state_path.unlink()
+
     bot = TradingBot(mock_mode=True)
     symbol = "005930"
     
@@ -75,6 +80,8 @@ def run_day5_test():
     
     # 전략 신호 강제 True 설정 (evaluate_h1_signal)
     bot.weekly_strategy.evaluate_h1_signal = MagicMock(return_value=True)
+    bot.weekly_strategy.select_complete_h1_candles = MagicMock(return_value=h1_data)
+    bot.weekly_strategy.check_m5_entry_timing = MagicMock(return_value=True)
     
     # 시간 설정 (현재 시간)
     mock_now = datetime.now().replace(hour=10, minute=0)
@@ -102,10 +109,16 @@ def run_day5_test():
     # 현재 2_3W 모드이므로 max_days=10 (CONFIG.WEEKLY_TIME_STOP_DAYS_2_3W)
     # 확실한 청산을 위해 15일로 설정
     bot.state._state["weekly_days_held"] = 15
-    
-    # 포지션 정보 모킹 (이전 단계에서 진입했으므로 설정되어 있겠지만 확실히)
+
+    # TP/SL이 아닌 TIME으로만 청산되도록 현재가를 진입가와 동일하게 고정
+    entry_price = bot.state.get_position_info()["entry_price"] or 52000
+    bot.marketdata.get_current_price = MagicMock(return_value=entry_price)
+
+    # 포지션 정보 모킹 (수량/평단가 일치)
+    capital = bot.state._state.get("capital_fixed_krw", 500000)
+    quantity = int(capital / entry_price) if entry_price else 1
     bot.orders.get_position = MagicMock(return_value={
-        "symbol": symbol, "quantity": 10, "average_price": 52000
+        "symbol": symbol, "quantity": quantity, "average_price": entry_price
     })
     
     with patch('main.datetime') as mock_datetime:

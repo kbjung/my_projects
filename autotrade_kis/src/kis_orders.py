@@ -6,7 +6,7 @@ kis_orders.py
 
 import os
 import requests
-from typing import Optional, Literal, Dict, List
+from typing import Optional, Literal, Dict, List, Tuple
 from datetime import datetime
 
 from kis_auth import get_auth
@@ -36,7 +36,6 @@ class KISOrders:
         self.auth = get_auth(mock_mode=mock_mode)
         self.mock_mode = self.auth.mock_mode
         self.base_url = self.auth.base_url
-        self.base_url = self.auth.base_url
         # KIS_ACCOUNT_NO가 없으면 KIS_ACCOUNT 사용
         self.account_no = os.getenv("KIS_ACCOUNT_NO", os.getenv("KIS_ACCOUNT", ""))
         
@@ -47,6 +46,27 @@ class KISOrders:
         # Mock 모드용 카운터
         self._mock_order_counter = 1000
     
+    def _parse_account_no(self) -> Optional[Tuple[str, str]]:
+        """계좌번호 파싱 (앞 8자리 / 뒤 2자리)"""
+        acct = (self.account_no or "").strip()
+        if not acct:
+            logger.error("계좌번호 설정 누락: KIS_ACCOUNT_NO 또는 KIS_ACCOUNT 확인 필요")
+            return None
+
+        if "-" in acct:
+            parts = acct.split("-")
+        else:
+            if len(acct) < 10:
+                logger.error(f"계좌번호 형식 오류: {acct}")
+                return None
+            parts = [acct[:8], acct[8:]]
+
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            logger.error(f"계좌번호 파싱 실패: {acct}")
+            return None
+
+        return parts[0], parts[1]
+
     def buy(
         self,
         symbol: str,
@@ -63,8 +83,9 @@ class KISOrders:
             # 실제 API 호출 (VTS or Real)
             url = f"{self.base_url}/uapi/domestic-stock/v1/trading/order-cash"
             
-            # 계좌번호 파싱 (앞 8자리-뒤 2자리)
-            account_parts = self.account_no.split("-") if "-" in self.account_no else [self.account_no[:8], self.account_no[8:]]
+            account_parts = self._parse_account_no()
+            if not account_parts:
+                return None
             
             # TR ID 선택 (Mock vs Real)
             tr_id = "VTTC0802U" if self.mock_mode else "TTTC0802U"
@@ -113,7 +134,9 @@ class KISOrders:
         try:
             url = f"{self.base_url}/uapi/domestic-stock/v1/trading/order-cash"
             
-            account_parts = self.account_no.split("-") if "-" in self.account_no else [self.account_no[:8], self.account_no[8:]]
+            account_parts = self._parse_account_no()
+            if not account_parts:
+                return None
             
             tr_id = "VTTC0801U" if self.mock_mode else "TTTC0801U"
             headers = self.auth.get_headers(tr_id=tr_id)
@@ -155,7 +178,9 @@ class KISOrders:
         try:
             url = f"{self.base_url}/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
             
-            account_parts = self.account_no.split("-") if "-" in self.account_no else [self.account_no[:8], self.account_no[8:]]
+            account_parts = self._parse_account_no()
+            if not account_parts:
+                return None
             
             tr_id = "VTTC8001R" if self.mock_mode else "TTTC8001R"
             headers = self.auth.get_headers(tr_id=tr_id)
@@ -205,7 +230,9 @@ class KISOrders:
         try:
             url = f"{self.base_url}/uapi/domestic-stock/v1/trading/inquire-balance"
             
-            account_parts = self.account_no.split("-") if "-" in self.account_no else [self.account_no[:8], self.account_no[8:]]
+            account_parts = self._parse_account_no()
+            if not account_parts:
+                return None
             
             tr_id = "VTTC8434R" if self.mock_mode else "TTTC8434R"
             headers = self.auth.get_headers(tr_id=tr_id)
@@ -279,7 +306,9 @@ class KISOrders:
         try:
             url = f"{self.base_url}/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
             
-            account_parts = self.account_no.split("-") if "-" in self.account_no else [self.account_no[:8], self.account_no[8:]]
+            account_parts = self._parse_account_no()
+            if not account_parts:
+                return []
             
             tr_id = "VTTC8001R" if self.mock_mode else "TTTC8001R"
             headers = self.auth.get_headers(tr_id=tr_id)

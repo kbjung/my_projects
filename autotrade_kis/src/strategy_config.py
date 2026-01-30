@@ -6,6 +6,7 @@ STRATEGY.md(설명), SPEC.md(규격), ACCEPTANCE.md(통과조건)과 동기화�
 """
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,9 @@ class TradingConfig:
     # Timeframes (minutes)
     TF_ENTRY_MIN: int = 5
     TF_SIGNAL_MIN: int = 60  # WEEKLY 신호봉: H1(60분봉) 고정
+
+    # H1 타임스탬프 해석 (None=자동, True=시작시각, False=종료시각)
+    H1_TIMESTAMP_IS_START: Optional[bool] = None
 
     # Weekly exits — 1W mode
     WEEKLY_TP_PCT_1W: float = 0.025

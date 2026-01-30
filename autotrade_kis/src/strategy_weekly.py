@@ -29,6 +29,91 @@ class WeeklyStrategy:
         self.mode = mode
         self.signal_candle_time: Optional[datetime] = None
         self.weekly_signal_h1: bool = False
+
+    def select_complete_h1_candles(self, candles_h1: pd.DataFrame, now: datetime) -> pd.DataFrame:
+        """
+        H1 완성봉만 선택
+
+        - 타임스탬프 해석:
+          * 시작 시각이면 ts + 60min <= now 인 봉만 사용
+          * 종료 시각이면 ts <= now 인 봉만 사용
+        - 방어적으로 데이터 이상 시 마지막 1개 추가 제외
+        """
+        if candles_h1 is None or candles_h1.empty:
+            return candles_h1
+
+        df = candles_h1.copy()
+
+        if "datetime" not in df.columns:
+            logger.warning("H1 캔들에 datetime 컬럼 없음: 마지막 1개 제외")
+            return df.iloc[:-1].reset_index(drop=True) if len(df) > 1 else df
+
+        df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
+        df = df.dropna(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
+
+        if df.empty:
+            return df
+
+        tf = timedelta(minutes=CONFIG.TF_SIGNAL_MIN)
+        ts = df["datetime"]
+
+        ts_is_start = CONFIG.H1_TIMESTAMP_IS_START
+        if ts_is_start is None:
+            ts_is_start = self._infer_timestamp_is_start(ts, now, tf)
+
+        if ts_is_start:
+            complete_mask = (ts + tf) <= now
+        else:
+            complete_mask = ts <= now
+
+        df_complete = df[complete_mask].reset_index(drop=True)
+
+        if df_complete.empty and len(df) > 1:
+            logger.warning("H1 완성봉 판단 실패: 마지막 1개 제외")
+            return df.iloc[:-1].reset_index(drop=True)
+
+        if self._needs_fallback_drop(df_complete, now):
+            logger.warning("H1 타임스탬프 이상 감지: 마지막 1개 추가 제외")
+            return df_complete.iloc[:-1].reset_index(drop=True) if len(df_complete) > 1 else df_complete
+
+        return df_complete
+
+    def _infer_timestamp_is_start(self, ts: pd.Series, now: datetime, tf: timedelta) -> bool:
+        """타임스탬프가 시작 시각인지 보수적으로 추정"""
+        if ts.empty:
+            return True
+
+        last_ts = ts.iloc[-1]
+
+        if last_ts is pd.NaT:
+            return True
+
+        if last_ts > now:
+            return True
+
+        # 마지막 봉이 아직 완성되지 않았을 가능성이 높으면 시작 시각으로 간주
+        if last_ts + tf > now:
+            return True
+
+        return False
+
+    def _needs_fallback_drop(self, df: pd.DataFrame, now: datetime) -> bool:
+        """데이터 이상 징후가 있으면 마지막 봉을 추가 제외"""
+        if df is None or df.empty or len(df) < 2:
+            return False
+
+        ts = df["datetime"]
+
+        if not ts.is_monotonic_increasing:
+            return True
+
+        if ts.duplicated().any():
+            return True
+
+        if ts.iloc[-1] > now:
+            return True
+
+        return False
     
     def evaluate_h1_signal(self, candles_h1: pd.DataFrame, is_complete_candle: bool = True) -> bool:
         """

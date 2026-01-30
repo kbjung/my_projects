@@ -38,8 +38,16 @@ class KISMarketData:
         self.mock_mode = self.auth.mock_mode
         self.base_url = self.auth.base_url
         
-        # 캐시
-        self._cache: Dict[str, pd.DataFrame] = {}
+        # 캐시 (데이터, 저장 시각)
+        self._cache: Dict[str, Dict[str, object]] = {}
+
+        # 타임프레임별 캐시 TTL (초)
+        self._cache_ttl_seconds = {
+            "M5": 30,
+            "H1": 120,
+            "D1": 900,
+            "W1": 1800
+        }
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """
@@ -103,14 +111,18 @@ class KISMarketData:
         """
         cache_key = f"{symbol}_{timeframe}_{count}"
         
-        # 캐시 확인 (5분 이내)
+        # 캐시 확인 (TTL 이내)
         if cache_key in self._cache:
-            logger.debug(f"캐시에서 캔들 데이터 반환: {cache_key}")
-            return self._cache[cache_key]
+            cached = self._cache[cache_key]
+            cached_at = cached.get("cached_at")
+            ttl = self._cache_ttl_seconds.get(timeframe, 60)
+            if cached_at and (datetime.now() - cached_at).total_seconds() <= ttl:
+                logger.debug(f"캐시에서 캔들 데이터 반환: {cache_key}")
+                return cached.get("data")
         
         if self.mock_mode:
             df = self._generate_mock_candles(symbol, timeframe, count)
-            self._cache[cache_key] = df
+            self._cache[cache_key] = {"data": df, "cached_at": datetime.now()}
             return df
         
         try:
@@ -125,7 +137,7 @@ class KISMarketData:
                 logger.error(f"지원하지 않는 타임프레임: {timeframe}")
                 return None
             
-            self._cache[cache_key] = df
+            self._cache[cache_key] = {"data": df, "cached_at": datetime.now()}
             return df
         
         except Exception as e:

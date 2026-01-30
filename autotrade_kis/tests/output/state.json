@@ -6,11 +6,12 @@
   "entry_price": null,
   "entry_time": null,
   "entry_date": null,
-  "daily_entry_taken": true,
+  "daily_entry_taken": false,
   "daily_stop_triggered": false,
-  "weekly_mode": "1W",
+  "weekly_mode": "2_3W",
   "weekly_position_open": false,
   "weekly_days_held": 0,
-  "last_updated": "2026-01-27T15:27:24.437080",
+  "last_updated": "2026-01-28T14:12:33.219812",
+  "last_reset_date": null,
   "version": "1.0"
 }

@@ -28,6 +28,7 @@ from weekly_mode_switcher import WeeklyModeSwitcher
 from trade_recorder import TradeRecorder
 from logger_config import main_logger as logger
 from utils import pad_left, pad_right, pad_center
+from strategy_config import CONFIG
 
 
 class TradingBot:
@@ -63,7 +64,6 @@ class TradingBot:
         # 테스트 종목 (실제로는 설정에서 로드)
         self.symbol = "005930"  # 삼성전자
         
-        self.last_reset_date = datetime.now().date()
         self.daily_report_done_date = None
         
         logger.info("봇 초기화 완료")
@@ -424,32 +424,52 @@ class TradingBot:
 
     def _check_weekly_entry(self, current_time: datetime):
         """WEEKLY 전략 진입 로직"""
-        # 1. 진입 윈도우(M5) 확인: 매시 정각 전후 X분
-        # MVP에서는 단순화하여 항상 체크하거나, H1 완성 시점으로 제한
-        
-        # 필요한 데이터: M5 (현재가/시간용), H1 (신호용)
-        h1_candles = self.marketdata.get_candles(self.symbol, "H1", count=100)
-        
-        if h1_candles is None:
+        # 1) 기존 H1 신호가 유효하면 M5 진입 타이밍만 확인
+        if self.weekly_strategy.weekly_signal_h1 and self.weekly_strategy.signal_candle_time:
+            if self._check_weekly_m5_entry(current_time):
+                current_price = self.marketdata.get_current_price(self.symbol)
+                if not current_price:
+                    return
+
+                mode = self.state.get_weekly_mode()
+                logger.info(f"WEEKLY 진입 조건 충족: 모드={mode}, 가격={current_price}")
+                self._execute_entry("WEEKLY", self.symbol, current_price, current_time)
             return
 
-        # 지표 추가 (Indicators 모듈 활용)
-        # 여기서 매번 계산하는 것은 비효율적일 수 있으나 MVP로는 무방
-        from indicators import add_all_indicators
-        mode = self.state.get_weekly_mode()
-        h1_with_indicators = add_all_indicators(h1_candles, mode=mode)
-        
-        # H1 신호 평가 (완성봉 기준)
-        # 직전 봉이 신호를 줬는지 확인
-        is_signal = self.weekly_strategy.evaluate_h1_signal(h1_with_indicators, is_complete_candle=True)
-        
-        if is_signal:
-            current_price = self.marketdata.get_current_price(self.symbol)
-            if not current_price:
-                return
+        # 2) H1 완성봉 기준 신호 평가
+        h1_candles = self.marketdata.get_candles(self.symbol, "H1", count=120)
+        if h1_candles is None or h1_candles.empty:
+            return
 
-            logger.info(f"WEEKLY 진입 신호 발생: 모드={mode}, 가격={current_price}")
-            self._execute_entry("WEEKLY", self.symbol, current_price, current_time)
+        complete_h1 = self.weekly_strategy.select_complete_h1_candles(h1_candles, current_time)
+        if complete_h1 is None or len(complete_h1) < 3:
+            return
+
+        is_signal = self.weekly_strategy.evaluate_h1_signal(complete_h1, is_complete_candle=True)
+        if not is_signal:
+            return
+
+        # 3) M5 진입 타이밍 확인 (윈도우 + 돌파)
+        if not self._check_weekly_m5_entry(current_time):
+            return
+
+        current_price = self.marketdata.get_current_price(self.symbol)
+        if not current_price:
+            return
+
+        mode = self.state.get_weekly_mode()
+        logger.info(f"WEEKLY 진입 조건 충족: 모드={mode}, 가격={current_price}")
+        self._execute_entry("WEEKLY", self.symbol, current_price, current_time)
+
+    def _check_weekly_m5_entry(self, current_time: datetime) -> bool:
+        """WEEKLY M5 진입 타이밍 검증"""
+        lookback = CONFIG.ENTRY_5M_BREAKOUT_LOOKBACK
+        count = max(lookback + 1, 10)
+        m5_candles = self.marketdata.get_candles(self.symbol, "M5", count=count)
+        if m5_candles is None or m5_candles.empty:
+            return False
+
+        return self.weekly_strategy.check_m5_entry_timing(m5_candles, current_time)
 
     def _check_daily_entry(self, current_time: datetime):
         """DAILY 전략 진입 로직"""
@@ -552,6 +572,30 @@ class TradingBot:
         """시그널 핸들러 (Ctrl+C 등)"""
         logger.info(f"\n시그널 수신: {signum}, 봇 종료 중...")
         self.running = False
+
+    def _check_daily_reset(self, current_time: datetime):
+        """일일 리셋 (09:00)"""
+        reset_time = dt_time(9, 0)
+        if current_time.time() < reset_time:
+            return
+
+        today = current_time.date().isoformat()
+        last_reset = self.state.get_last_reset_date()
+
+        if last_reset == today:
+            return
+
+        # WEEKLY 보유 중이면 영업일 증가
+        if self.state.get_position_state() == "WEEKLY":
+            self.position_mgr.increment_holding_days()
+
+        # 일일 플래그 및 전략 상태 리셋
+        self.state.reset_daily_flags()
+        self.state.set_last_reset_date(current_time.date())
+        self.daily_strategy.reset()
+        self.weekly_strategy.reset()
+
+        logger.info(f"일일 리셋 완료: {today} @ {reset_time}")
     
     def stop(self):
         """봇 종료"""
