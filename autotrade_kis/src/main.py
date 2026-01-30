@@ -66,6 +66,7 @@ class TradingBot:
         
         self.daily_report_done_date = None
         self._daily_skip_logged = False
+        self._last_equity_update = None
         
         logger.info("봇 초기화 완료")
         
@@ -145,6 +146,8 @@ class TradingBot:
                 
                 # 1. 시장 데이터 업데이트
                 self._update_market_data()
+                # 평가금 업데이트 (주기적)
+                self._update_equity(current_time)
                 
                 # 2. 포지션 확인 및 청산 체크
                 position_state = self.state.get_position_state()
@@ -232,6 +235,9 @@ class TradingBot:
         
         # 1. 당일 체결 내역
         trades = self.orders.get_today_trades()
+        # 시간 오름차순 정렬 (최신이 아래로)
+        if trades:
+            trades = sorted(trades, key=lambda t: t.get("time", ""))
         print(f" [1] 금일 체결 내역 (총 {len(trades)}건)")
         
         if trades:
@@ -381,6 +387,18 @@ class TradingBot:
         # 주간 모드 전환 체크 (하루 1회 또는 주기적)
         # 여기서는 매 업데이트마다 체크하되, 실제로는 D1 갱신 시점에만 해도 됨
         self._check_weekly_mode_switch()
+
+    def _update_equity(self, current_time: datetime):
+        """평가금(equity) 주기적 업데이트"""
+        if self._last_equity_update and (current_time - self._last_equity_update).total_seconds() < 300:
+            return
+
+        balance = self.orders.get_balance()
+        if balance:
+            equity = balance.get("total_asset")
+            if equity is not None:
+                self.state.set_equity(float(equity))
+                self._last_equity_update = current_time
 
     def _check_weekly_mode_switch(self):
         """주간 모드 전환 체크"""
@@ -532,7 +550,9 @@ class TradingBot:
         
         # 수량 계산 (자본금 기준, 슬리피지 고려 안함)
         capital = self.state._state["capital_fixed_krw"]
-        quantity = int(capital / price)
+        effective_capital = capital * (1 - CONFIG.CAPITAL_BUFFER_PCT)
+        buffered_price = price * (1 + CONFIG.ENTRY_PRICE_BUFFER_PCT)
+        quantity = int(effective_capital / buffered_price)
         
         if quantity <= 0:
             logger.error(f"주문 수량 부족: 자본={capital}, 가격={price}")

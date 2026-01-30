@@ -82,6 +82,10 @@ class TradingConfig:
     # Optional feature
     ENABLE_EARLY_EXIT_WEEKLY: bool = False  # 처음엔 False 권장
 
+    # Position sizing safety buffer
+    ENTRY_PRICE_BUFFER_PCT: float = 0.01  # 1% 안전 마진
+    CAPITAL_BUFFER_PCT: float = 0.02      # 운용금 2% 안전 마진
+
     # Existing position adoption (startup sync)
     ADOPT_EXISTING_POSITION: bool = True
     ADOPT_POSITION_MODE: str = "WEEKLY"  # "DAILY" or "WEEKLY"

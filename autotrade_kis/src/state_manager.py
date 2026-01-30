@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, Literal, Dict, Any
 
 from logger_config import get_logger
+from strategy_config import CONFIG
 
 logger = get_logger("state")
 
@@ -42,8 +43,8 @@ class StateManager:
         # 초기 상태 (SPEC.md 기준)
         initial_state = {
             # Capital
-            "capital_fixed_krw": 500000,
-            "equity_krw": 500000,
+            "capital_fixed_krw": CONFIG.CAPITAL_FIXED_KRW,
+            "equity_krw": CONFIG.CAPITAL_FIXED_KRW,
             
             # Position
             "position_state": "NONE",
@@ -76,6 +77,12 @@ class StateManager:
                     state = json.load(f)
                 logger.info(f"상태 파일 로드 완료: {self.state_file}")
                 state = self._ensure_defaults(state, initial_state)
+                # 운용금 설정 변경 시 자동 반영 (equity는 기존과 동일할 때만 동기화)
+                old_capital = state.get("capital_fixed_krw")
+                state["capital_fixed_krw"] = CONFIG.CAPITAL_FIXED_KRW
+                if state.get("equity_krw") == old_capital:
+                    state["equity_krw"] = CONFIG.CAPITAL_FIXED_KRW
+                self._save(state)
                 return state
             except Exception as e:
                 logger.error(f"상태 파일 로드 실패: {e}, 초기 상태로 시작")
