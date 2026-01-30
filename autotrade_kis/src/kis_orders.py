@@ -101,6 +101,8 @@ class KISOrders:
             }
             
             response = requests.post(url, headers=headers, json=body, timeout=10)
+            if response.status_code >= 400:
+                self._log_api_error("BUY", response)
             response.raise_for_status()
             
             data = response.json()
@@ -151,6 +153,8 @@ class KISOrders:
             }
             
             response = requests.post(url, headers=headers, json=body, timeout=10)
+            if response.status_code >= 400:
+                self._log_api_error("SELL", response)
             response.raise_for_status()
             
             data = response.json()
@@ -203,6 +207,8 @@ class KISOrders:
             }
             
             response = requests.get(url, headers=headers, params=params, timeout=10)
+            if response.status_code >= 400:
+                self._log_api_error("ORDER_STATUS", response)
             response.raise_for_status()
             
             data = response.json()
@@ -252,6 +258,8 @@ class KISOrders:
             }
             
             response = requests.get(url, headers=headers, params=params, timeout=10)
+            if response.status_code >= 400:
+                self._log_api_error("BALANCE", response)
             response.raise_for_status()
             
             data = response.json()
@@ -299,6 +307,21 @@ class KISOrders:
         
         return None
 
+    def _log_api_error(self, label: str, response: requests.Response) -> None:
+        """API 에러 응답 로깅 (민감정보 제외)"""
+        try:
+            data = response.json()
+        except Exception:
+            data = {"raw": response.text[:200]}
+
+        safe = {
+            "status_code": response.status_code,
+            "rt_cd": data.get("rt_cd"),
+            "msg_cd": data.get("msg_cd"),
+            "msg1": data.get("msg1"),
+        }
+        logger.error(f"{label} API 오류 응답: {safe}")
+
     def get_today_trades(self) -> List[Dict]:
         """
         당일 체결 내역 조회
@@ -331,6 +354,8 @@ class KISOrders:
             }
             
             response = requests.get(url, headers=headers, params=params, timeout=10)
+            if response.status_code >= 400:
+                self._log_api_error("TODAY_TRADES", response)
             response.raise_for_status()
             
             data = response.json()

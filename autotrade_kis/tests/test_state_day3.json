@@ -1,0 +1,17 @@
+{
+  "capital_fixed_krw": 500000,
+  "equity_krw": 500000,
+  "position_state": "DAILY",
+  "symbol_in_position": "005930",
+  "entry_price": 162600.0,
+  "entry_time": "2026-01-30T12:15:58.664786",
+  "entry_date": "2026-01-30",
+  "daily_entry_taken": true,
+  "daily_stop_triggered": false,
+  "weekly_mode": "1W",
+  "weekly_position_open": false,
+  "weekly_days_held": 0,
+  "last_updated": "2026-01-30T12:15:58.664786",
+  "last_reset_date": null,
+  "version": "1.0"
+}

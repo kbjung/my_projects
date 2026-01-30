@@ -82,5 +82,12 @@ class TradingConfig:
     # Optional feature
     ENABLE_EARLY_EXIT_WEEKLY: bool = False  # 처음엔 False 권장
 
+    # Existing position adoption (startup sync)
+    ADOPT_EXISTING_POSITION: bool = True
+    ADOPT_POSITION_MODE: str = "WEEKLY"  # "DAILY" or "WEEKLY"
+    ADOPT_USE_AVG_PRICE: bool = True
+    ADOPT_USE_TRADE_HISTORY: bool = True
+    TRADES_CSV_PATH: str = "data/trades.csv"
+
 
 CONFIG = TradingConfig()

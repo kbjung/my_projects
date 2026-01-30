@@ -104,3 +104,36 @@ class TradeRecorder:
                 writer.writerow(row)
         except Exception as e:
             logger.error(f"거래 기록 저장 실패: {e}")
+
+    @staticmethod
+    def infer_last_open_position_type(
+        symbol: str,
+        file_path: str = "data/trades.csv"
+    ) -> Optional[str]:
+        """
+        거래 기록에서 마지막 미청산 포지션의 전략 타입 추론
+        - 마지막 거래가 BUY이면 해당 position_type 반환
+        - 마지막 거래가 SELL이면 None 반환
+        """
+        path = Path(file_path)
+        if not path.exists():
+            return None
+
+        last_row = None
+        try:
+            with open(path, 'r', newline='', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row.get("symbol") == symbol:
+                        last_row = row
+        except Exception as e:
+            logger.error(f"거래 기록 조회 실패: {e}")
+            return None
+
+        if not last_row:
+            return None
+
+        if last_row.get("side") == "BUY":
+            return last_row.get("position_type")
+
+        return None

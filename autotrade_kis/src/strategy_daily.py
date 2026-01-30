@@ -27,6 +27,7 @@ class DailyStrategy:
     def __init__(self):
         self.opening_high: Optional[float] = None
         self.opening_range_end_time: Optional[datetime] = None
+        self.opening_range_missed: bool = False
     
     def calculate_opening_high(self, candles_m5: pd.DataFrame, market_open_time: datetime) -> float:
         """
@@ -167,4 +168,5 @@ class DailyStrategy:
         """일일 상태 초기화"""
         self.opening_high = None
         self.opening_range_end_time = None
+        self.opening_range_missed = False
         logger.info("DAILY 전략 상태 초기화")

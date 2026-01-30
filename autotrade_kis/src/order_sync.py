@@ -70,7 +70,7 @@ class OrderSynchronizer:
             
             if order_status and order_status["status"] == "filled":
                 logger.info(
-                    f"매수 체결 확인: 주문번호={order_no}, "
+                    f"[EVENT] 매수 체결: 주문번호={order_no}, "
                     f"수량={order_status['filled_qty']}, "
                     f"가격={order_status['filled_price']}"
                 )
@@ -138,7 +138,7 @@ class OrderSynchronizer:
             
             if order_status and order_status["status"] == "filled":
                 logger.info(
-                    f"매도 체결 확인: 주문번호={order_no}, "
+                    f"[EVENT] 매도 체결: 주문번호={order_no}, "
                     f"수량={order_status['filled_qty']}, "
                     f"가격={order_status['filled_price']}"
                 )

@@ -25,6 +25,11 @@ def run_day4_test():
     logger.info("Day 4: DAILY 전략 자동화 테스트 (Mock)")
     logger.info("=" * 60)
     
+    # 이전 테스트 상태 초기화
+    state_path = Path(__file__).parent / "output" / "state.json"
+    if state_path.exists():
+        state_path.unlink()
+
     # 봇 인스턴스 생성 (Mock 모드)
     # 주의: 내부 컴포넌트들을 테스트 목적에 맞게 조작해야 함
     bot = TradingBot(mock_mode=True)
@@ -108,15 +113,16 @@ def run_day4_test():
     # === 시나리오 4: 청산 (TP) ===
     logger.info("\n[4/4] 청산(TP) 자동화 테스트...")
     
-    # 진입가 50100, TP +0.8% = 50500.8
-    # 현재가 급등: 51000
-    bot.marketdata.get_current_price = MagicMock(return_value=51000)
+    # 진입가 기준 TP 이상 가격으로 설정 (SL 방지)
+    entry_price = bot.state.get_position_info()["entry_price"] or 50100
+    tp_price = entry_price * 1.01  # TP(0.8%)를 확실히 넘도록 1% 사용
+    bot.marketdata.get_current_price = MagicMock(return_value=tp_price)
     
     # get_position 모킹 추가 (청산 시 포지션 수량 조회 필요)
     bot.orders.get_position = MagicMock(return_value={
         "symbol": "005930",
         "quantity": 9,
-        "average_price": 50000
+        "average_price": entry_price
     })
     
     with patch('main.datetime') as mock_datetime:

@@ -46,6 +46,16 @@ class SensitiveDataFilter(logging.Filter):
         return True
 
 
+class ConsoleEventFilter(logging.Filter):
+    """콘솔에는 이벤트/경고/에러만 출력"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno >= logging.WARNING:
+            return True
+        msg = record.getMessage()
+        return "[EVENT]" in msg
+
+
 def setup_logger(
     name: str,
     log_dir: str = "logs",
@@ -109,6 +119,7 @@ def setup_logger(
         console_handler.setLevel(level)
         console_handler.setFormatter(console_formatter)
         console_handler.addFilter(SensitiveDataFilter())
+        console_handler.addFilter(ConsoleEventFilter())
         logger.addHandler(console_handler)
     
     # 에러 전용 파일 핸들러

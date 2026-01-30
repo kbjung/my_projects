@@ -55,6 +55,9 @@ class StateManager:
             # Daily strategy
             "daily_entry_taken": False,
             "daily_stop_triggered": False,
+            "daily_opening_high": None,
+            "daily_opening_end_time": None,
+            "daily_opening_date": None,
             
             # Weekly strategy
             "weekly_mode": "1W",
@@ -112,6 +115,15 @@ class StateManager:
         """DAILY 당일 진입 여부"""
         with self._lock:
             return self._state["daily_entry_taken"]
+
+    def get_daily_opening(self) -> Dict[str, Any]:
+        """오프닝 레인지 저장값 조회"""
+        with self._lock:
+            return {
+                "opening_high": self._state.get("daily_opening_high"),
+                "opening_end_time": self._state.get("daily_opening_end_time"),
+                "opening_date": self._state.get("daily_opening_date"),
+            }
     
     def get_daily_stop_triggered(self) -> bool:
         """당일 손절 발생 여부"""
@@ -177,6 +189,22 @@ class StateManager:
             self._state["daily_stop_triggered"] = triggered
             self._save(self._state)
             logger.warning(f"daily_stop_triggered = {triggered}")
+
+    def set_daily_opening(self, opening_high: float, opening_end_time: datetime, opening_date: str) -> None:
+        """오프닝 레인지 값 저장"""
+        with self._lock:
+            self._state["daily_opening_high"] = opening_high
+            self._state["daily_opening_end_time"] = opening_end_time.isoformat()
+            self._state["daily_opening_date"] = opening_date
+            self._save(self._state)
+
+    def clear_daily_opening(self) -> None:
+        """오프닝 레인지 값 초기화"""
+        with self._lock:
+            self._state["daily_opening_high"] = None
+            self._state["daily_opening_end_time"] = None
+            self._state["daily_opening_date"] = None
+            self._save(self._state)
     
     def set_weekly_mode(self, mode: WeeklyMode) -> None:
         """주간 모드 설정"""
@@ -288,6 +316,9 @@ class StateManager:
         with self._lock:
             self._state["daily_entry_taken"] = False
             self._state["daily_stop_triggered"] = False
+            self._state["daily_opening_high"] = None
+            self._state["daily_opening_end_time"] = None
+            self._state["daily_opening_date"] = None
             self._save(self._state)
             logger.info("일일 플래그 초기화 완료")
     

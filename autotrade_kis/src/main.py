@@ -65,6 +65,7 @@ class TradingBot:
         self.symbol = "005930"  # 삼성전자
         
         self.daily_report_done_date = None
+        self._daily_skip_logged = False
         
         logger.info("봇 초기화 완료")
         
@@ -93,7 +94,7 @@ class TradingBot:
     def start(self):
         """봇 시작"""
         print("=" * 60)
-        print(f"🚀 자동매매 봇 시작 (모드: {'Mock' if self.mock_mode else '실전'})")
+        print(f"[START] 자동매매 봇 시작 (모드: {'Mock' if self.mock_mode else '실전'})")
         print("=" * 60)
         
         self.running = True
@@ -104,6 +105,10 @@ class TradingBot:
         
         # 시작 시 계좌 요약 출력
         self._print_startup_summary()
+        # 기존 보유 포지션 동기화
+        self._sync_existing_position()
+        # 오프닝 레인지 복원(가능하면)
+        self._load_daily_opening_from_state()
         
         # 메인 루프
         try:
@@ -222,7 +227,7 @@ class TradingBot:
         """장 마감 일일 리포트 생성"""
         # 로그 접두사 없이 깔끔하게 출력하기 위해 print 사용
         print("\n" + "=" * 60)
-        print(f" 📢 일일 거래 리포트 ({current_time.strftime('%Y-%m-%d')})")
+        print(f" [REPORT] 일일 거래 리포트 ({current_time.strftime('%Y-%m-%d')})")
         print("=" * 60)
         
         # 1. 당일 체결 내역
@@ -346,15 +351,32 @@ class TradingBot:
             logger.debug(f"현재가: {self.symbol} = {current_price}")
         
         # 오프닝 레인지 계산 (DAILY 전략용)
-        # 조건: 장 시작 후, 아직 계산 안됨, 포지션 없음
         if not self.daily_strategy.opening_high:
             current_time = datetime.now()
             market_open_time = current_time.replace(hour=9, minute=0, second=0, microsecond=0)
-            
-            # 장 시작 10분 후부터 계산 시도 (데이터 확보 위해)
-            m5_candles = self.marketdata.get_candles(self.symbol, "M5", count=20) # 넉넉히
-            if m5_candles is not None and not m5_candles.empty:
-                self.daily_strategy.calculate_opening_high(m5_candles, market_open_time)
+            opening_end = market_open_time + pd.Timedelta(minutes=CONFIG.OPENING_RANGE_MINUTES)
+
+            # 오프닝 시간 경과 시 DAILY 판단 패스 (1회 알림)
+            if current_time > opening_end:
+                self.daily_strategy.opening_range_end_time = opening_end
+                self.daily_strategy.opening_range_missed = True
+                if not self._daily_skip_logged:
+                    logger.info(
+                        "[EVENT] 오늘 DAILY 진입: 불가능 "
+                        f"(오프닝 레인지 {market_open_time.strftime('%H:%M')}~{opening_end.strftime('%H:%M')} 경과)"
+                    )
+                    self._daily_skip_logged = True
+            else:
+                # 오프닝 시간 내에는 계산 시도
+                m5_candles = self.marketdata.get_candles(self.symbol, "M5", count=20)
+                if m5_candles is not None and not m5_candles.empty:
+                    opening_high = self.daily_strategy.calculate_opening_high(m5_candles, market_open_time)
+                    if opening_high:
+                        self.state.set_daily_opening(
+                            opening_high=opening_high,
+                            opening_end_time=self.daily_strategy.opening_range_end_time,
+                            opening_date=current_time.date().isoformat()
+                        )
 
         # 주간 모드 전환 체크 (하루 1회 또는 주기적)
         # 여기서는 매 업데이트마다 체크하되, 실제로는 D1 갱신 시점에만 해도 됨
@@ -377,7 +399,7 @@ class TradingBot:
              
              current_mode = self.state.get_weekly_mode()
              if mode != current_mode:
-                 logger.info(f"주간 모드 변경 감지: {current_mode} -> {mode}")
+                 logger.info(f"[EVENT] 주간 모드 변경: {current_mode} -> {mode}")
                  self.state.set_weekly_mode(mode)
                  self.weekly_strategy.mode = mode # 전략 객체에도 반영
 
@@ -476,6 +498,10 @@ class TradingBot:
         # 1. 이미 금일 진입했는지 확인
         if self.state.get_daily_entry_taken():
             return
+
+        # 오프닝 레인지 실패 시 스킵
+        if self.daily_strategy.opening_range_missed:
+            return
         
         # 2. 오프닝 레인지 기준가 설정 여부 확인
         if not self.daily_strategy.opening_high:
@@ -512,7 +538,7 @@ class TradingBot:
             logger.error(f"주문 수량 부족: 자본={capital}, 가격={price}")
             return
 
-        logger.info(f"⚡ 신규 진입 시도: {s_name}({symbol}) | 전략={position_type} | 수량={quantity}")
+        logger.info(f"[EVENT] 진입 주문: {s_name}({symbol}) | 전략={position_type} | 수량={quantity}")
         
         # 매수 주문 + 동기화
         result = self.order_sync.execute_buy_with_sync(symbol, quantity)
@@ -524,14 +550,14 @@ class TradingBot:
             # CSV 기록
             self.recorder.record_entry(symbol, position_type, actual_price, quantity, current_time)
             
-            logger.info(f"✅ 진입 체결 완료: {s_name}({symbol}) @ {actual_price:,.0f}원")
+            logger.info(f"[EVENT] 진입 체결: {s_name}({symbol}) @ {actual_price:,.0f}원")
         else:
             logger.error("❌ 진입 주문 실패")
     
     def _execute_exit(self, symbol: str, exit_price: float, reason: str):
         """청산 실행"""
         s_name = self._get_symbol_name(symbol)
-        logger.info(f"👋 청산 시도: {s_name}({symbol}) @ {exit_price} | 사유={reason}")
+        logger.info(f"[EVENT] 청산 주문: {s_name}({symbol}) @ {exit_price} | 사유={reason}")
         
         # 포지션 정보 조회 (청산 전 필요)
         position = self.orders.get_position(symbol)
@@ -564,7 +590,7 @@ class TradingBot:
             if reason == "SL":
                 self.risk_ctrl.on_stop_loss()
             
-            logger.info(f"✅ 청산 체결 완료: {s_name}({symbol}) @ {actual_exit_price:,.0f}원 (사유: {reason})")
+            logger.info(f"[EVENT] 청산 체결: {s_name}({symbol}) @ {actual_exit_price:,.0f}원 (사유: {reason})")
         else:
             logger.error("❌ 청산 실패")
     
@@ -594,8 +620,88 @@ class TradingBot:
         self.state.set_last_reset_date(current_time.date())
         self.daily_strategy.reset()
         self.weekly_strategy.reset()
+        self._daily_skip_logged = False
 
         logger.info(f"일일 리셋 완료: {today} @ {reset_time}")
+
+    def _sync_existing_position(self):
+        """기존 보유 포지션을 상태에 반영"""
+        if not CONFIG.ADOPT_EXISTING_POSITION:
+            return
+
+        if self.state.get_position_state() != "NONE":
+            logger.info("기존 포지션 동기화 스킵: 이미 상태에 포지션 존재")
+            return
+
+        balance = self.orders.get_balance()
+        if not balance or not balance.get("positions"):
+            logger.info("기존 포지션 없음")
+            return
+
+        positions = balance["positions"]
+        if len(positions) > 1:
+            logger.warning("기존 포지션이 여러 개입니다. 첫 번째 종목만 동기화합니다.")
+
+        pos = positions[0]
+        symbol = pos["symbol"]
+        qty = pos.get("quantity", 0)
+        if qty <= 0:
+            logger.info("기존 포지션 수량 0: 동기화 스킵")
+            return
+
+        entry_price = pos.get("avg_price") if CONFIG.ADOPT_USE_AVG_PRICE else pos.get("current_price")
+        if not entry_price:
+            logger.warning("진입가 확인 불가: 동기화 스킵")
+            return
+
+        mode = None
+        if CONFIG.ADOPT_USE_TRADE_HISTORY:
+            mode = TradeRecorder.infer_last_open_position_type(
+                symbol=symbol,
+                file_path=CONFIG.TRADES_CSV_PATH
+            )
+
+        if not mode:
+            mode = CONFIG.ADOPT_POSITION_MODE
+
+        if mode not in ("DAILY", "WEEKLY"):
+            logger.warning(f"ADOPT_POSITION_MODE 값 오류: {mode} (동기화 스킵)")
+            return
+
+        now = datetime.now()
+        self.state.open_position(mode, symbol, float(entry_price), now)
+        logger.info(
+            f"기존 보유 포지션 동기화 완료: {symbol} | 수량={qty} | "
+            f"진입가={entry_price} | 모드={mode}"
+        )
+
+    def _load_daily_opening_from_state(self):
+        """state에 저장된 오프닝 레인지 복원"""
+        info = self.state.get_daily_opening()
+        opening_high = info.get("opening_high")
+        opening_end_time = info.get("opening_end_time")
+        opening_date = info.get("opening_date")
+
+        if not opening_high or not opening_end_time or not opening_date:
+            return
+
+        today = datetime.now().date().isoformat()
+        if opening_date != today:
+            return
+
+        try:
+            end_dt = datetime.fromisoformat(opening_end_time)
+        except Exception:
+            return
+
+        self.daily_strategy.opening_high = float(opening_high)
+        self.daily_strategy.opening_range_end_time = end_dt
+        if not self._daily_skip_logged:
+            logger.info(
+                f"[EVENT] 오프닝 레인지 복원: opening_high={opening_high}, "
+                f"end={end_dt.strftime('%H:%M')}"
+            )
+            self._daily_skip_logged = True
     
     def stop(self):
         """봇 종료"""
