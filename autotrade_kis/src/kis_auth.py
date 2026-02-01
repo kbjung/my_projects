@@ -77,6 +77,11 @@ class KISAuth:
             self._issue_token()
         
         return self.access_token
+
+    def refresh_token(self) -> str:
+        """토큰 강제 갱신"""
+        self._issue_token()
+        return self.access_token
     
     def _is_token_expired(self) -> bool:
         """토큰 만료 여부 확인"""

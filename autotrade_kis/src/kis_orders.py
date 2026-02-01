@@ -46,26 +46,40 @@ class KISOrders:
         # Mock 모드용 카운터
         self._mock_order_counter = 1000
     
+    def _get_account_no(self) -> str:
+        """환경에 맞는 계좌번호 선택"""
+        env_mode = os.getenv("KIS_ENV", "").strip().lower()
+        if env_mode == "paper":
+            return os.getenv("KIS_ACCOUNT_PAPER", "") or os.getenv("KIS_ACCOUNT_NO", "") or os.getenv("KIS_ACCOUNT", "")
+        if env_mode == "live":
+            return os.getenv("KIS_ACCOUNT_LIVE", "") or os.getenv("KIS_ACCOUNT_NO", "") or os.getenv("KIS_ACCOUNT", "")
+        return os.getenv("KIS_ACCOUNT_NO", "") or os.getenv("KIS_ACCOUNT", "")
+
     def _parse_account_no(self) -> Optional[Tuple[str, str]]:
         """계좌번호 파싱 (앞 8자리 / 뒤 2자리)"""
+        # env 재로딩 대비
+        self.account_no = self._get_account_no() or self.account_no or ""
         acct = (self.account_no or "").strip()
         if not acct:
             logger.error("계좌번호 설정 누락: KIS_ACCOUNT_NO 또는 KIS_ACCOUNT 확인 필요")
             return None
 
-        if "-" in acct:
-            parts = acct.split("-")
-        else:
-            if len(acct) < 10:
-                logger.error(f"계좌번호 형식 오류: {acct}")
-                return None
-            parts = [acct[:8], acct[8:]]
+        # 숫자만 추출
+        digits = "".join(ch for ch in acct if ch.isdigit())
+        if len(digits) < 10:
+            logger.error(f"계좌번호 형식 오류: {acct}")
+            return None
 
-        if len(parts) != 2 or not parts[0] or not parts[1]:
+        # 마지막 10자리 기준으로 해석 (앞 8자리 + 뒤 2자리)
+        digits = digits[-10:]
+        cano = digits[:8]
+        prdt = digits[8:]
+
+        if len(cano) != 8 or len(prdt) != 2:
             logger.error(f"계좌번호 파싱 실패: {acct}")
             return None
 
-        return parts[0], parts[1]
+        return cano, prdt
 
     def buy(
         self,
@@ -89,7 +103,6 @@ class KISOrders:
             
             # TR ID 선택 (Mock vs Real)
             tr_id = "VTTC0802U" if self.mock_mode else "TTTC0802U"
-            headers = self.auth.get_headers(tr_id=tr_id)
             
             body = {
                 "CANO": account_parts[0],
@@ -100,7 +113,7 @@ class KISOrders:
                 "ORD_UNPR": str(int(price)) if price else "0",
             }
             
-            response = requests.post(url, headers=headers, json=body, timeout=10)
+            response = self._request("POST", url, tr_id=tr_id, json=body)
             if response.status_code >= 400:
                 self._log_api_error("BUY", response)
             response.raise_for_status()
@@ -141,7 +154,6 @@ class KISOrders:
                 return None
             
             tr_id = "VTTC0801U" if self.mock_mode else "TTTC0801U"
-            headers = self.auth.get_headers(tr_id=tr_id)
             
             body = {
                 "CANO": account_parts[0],
@@ -152,7 +164,7 @@ class KISOrders:
                 "ORD_UNPR": str(int(price)) if price else "0",
             }
             
-            response = requests.post(url, headers=headers, json=body, timeout=10)
+            response = self._request("POST", url, tr_id=tr_id, json=body)
             if response.status_code >= 400:
                 self._log_api_error("SELL", response)
             response.raise_for_status()
@@ -187,7 +199,6 @@ class KISOrders:
                 return None
             
             tr_id = "VTTC8001R" if self.mock_mode else "TTTC8001R"
-            headers = self.auth.get_headers(tr_id=tr_id)
             
             params = {
                 "CANO": account_parts[0],
@@ -206,7 +217,7 @@ class KISOrders:
                 "CTX_AREA_NK100": ""
             }
             
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response = self._request("GET", url, tr_id=tr_id, params=params)
             if response.status_code >= 400:
                 self._log_api_error("ORDER_STATUS", response)
             response.raise_for_status()
@@ -241,7 +252,6 @@ class KISOrders:
                 return None
             
             tr_id = "VTTC8434R" if self.mock_mode else "TTTC8434R"
-            headers = self.auth.get_headers(tr_id=tr_id)
             
             params = {
                 "CANO": account_parts[0],
@@ -257,7 +267,7 @@ class KISOrders:
                 "CTX_AREA_NK100": ""
             }
             
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response = self._request("GET", url, tr_id=tr_id, params=params)
             if response.status_code >= 400:
                 self._log_api_error("BALANCE", response)
             response.raise_for_status()
@@ -322,6 +332,38 @@ class KISOrders:
         }
         logger.error(f"{label} API 오류 응답: {safe}")
 
+    def _request(
+        self,
+        method: str,
+        url: str,
+        tr_id: str,
+        params: Optional[Dict] = None,
+        json: Optional[Dict] = None,
+        timeout: int = 10
+    ) -> requests.Response:
+        """요청 수행 (토큰 만료 시 1회 재시도)"""
+        headers = self.auth.get_headers(tr_id=tr_id)
+        response = requests.request(method, url, headers=headers, params=params, json=json, timeout=timeout)
+
+        if response.status_code >= 400 and self._is_token_expired_response(response):
+            logger.warning("[EVENT] 토큰 만료 감지: 재발급 후 재시도")
+            self.auth.refresh_token()
+            headers = self.auth.get_headers(tr_id=tr_id)
+            response = requests.request(method, url, headers=headers, params=params, json=json, timeout=timeout)
+
+        return response
+
+    def _is_token_expired_response(self, response: requests.Response) -> bool:
+        """토큰 만료 응답 여부"""
+        try:
+            data = response.json()
+        except Exception:
+            return False
+
+        msg_cd = data.get("msg_cd")
+        msg1 = data.get("msg1", "")
+        return msg_cd == "EGW00123" or "token" in msg1
+
     def get_today_trades(self) -> List[Dict]:
         """
         당일 체결 내역 조회
@@ -334,7 +376,6 @@ class KISOrders:
                 return []
             
             tr_id = "VTTC8001R" if self.mock_mode else "TTTC8001R"
-            headers = self.auth.get_headers(tr_id=tr_id)
             
             params = {
                 "CANO": account_parts[0],
@@ -353,7 +394,7 @@ class KISOrders:
                 "CTX_AREA_NK100": ""
             }
             
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response = self._request("GET", url, tr_id=tr_id, params=params)
             if response.status_code >= 400:
                 self._log_api_error("TODAY_TRADES", response)
             response.raise_for_status()

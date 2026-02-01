@@ -75,7 +75,7 @@ class KISMarketData:
                 "FID_INPUT_ISCD": symbol
             }
             
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response = self._request("GET", url, headers=headers, params=params)
             response.raise_for_status()
             
             data = response.json()
@@ -166,7 +166,7 @@ class KISMarketData:
             "FID_PW_DATA_INCU_YN": "Y"
         }
         
-        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response = self._request("GET", url, headers=headers, params=params)
         response.raise_for_status()
         
         data = response.json()
@@ -223,7 +223,7 @@ class KISMarketData:
             "FID_ORG_ADJ_PRC": "0"  # 0=수정주가
         }
         
-        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response = self._request("GET", url, headers=headers, params=params)
         response.raise_for_status()
         
         data = response.json()
@@ -275,7 +275,7 @@ class KISMarketData:
             "FID_ORG_ADJ_PRC": "0"
         }
         
-        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response = self._request("GET", url, headers=headers, params=params)
         response.raise_for_status()
         
         data = response.json()
@@ -378,3 +378,35 @@ class KISMarketData:
         filepath = data_path / filename
         df.to_csv(filepath, index=False, encoding='utf-8-sig')
         logger.info(f"CSV 저장 완료: {filepath}")
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        headers: Dict[str, str],
+        params: Optional[Dict] = None,
+        json: Optional[Dict] = None,
+        timeout: int = 10
+    ) -> requests.Response:
+        """요청 수행 (토큰 만료 시 1회 재시도)"""
+        response = requests.request(method, url, headers=headers, params=params, json=json, timeout=timeout)
+
+        if response.status_code >= 400 and self._is_token_expired_response(response):
+            logger.warning("[EVENT] 토큰 만료 감지: 재발급 후 재시도")
+            self.auth.refresh_token()
+            # 토큰 재발급 후 헤더 재생성 필요
+            headers = self.auth.get_headers(tr_id=headers.get("tr_id", ""))
+            response = requests.request(method, url, headers=headers, params=params, json=json, timeout=timeout)
+
+        return response
+
+    def _is_token_expired_response(self, response: requests.Response) -> bool:
+        """토큰 만료 응답 여부"""
+        try:
+            data = response.json()
+        except Exception:
+            return False
+
+        msg_cd = data.get("msg_cd")
+        msg1 = data.get("msg1", "")
+        return msg_cd == "EGW00123" or "token" in msg1

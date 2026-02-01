@@ -12,7 +12,6 @@ from datetime import datetime, time as dt_time
 import pandas as pd
 
 # src 디렉토리를 경로에 추가
-# src 디렉토리를 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from state_manager import StateManager
@@ -173,6 +172,13 @@ class TradingBot:
         print("-" * 60)
         
         balance = self.orders.get_balance()
+        if not balance:
+            logger.warning("[EVENT] 계좌 정보 조회 실패: 토큰 재발급 후 재시도")
+            try:
+                self.auth.refresh_token()
+            except Exception as e:
+                logger.error(f"토큰 재발급 실패: {e}")
+            balance = self.orders.get_balance()
         if balance:
             cash_fmt = self._format_currency_kr(balance['cash'])
             asset_fmt = self._format_currency_kr(balance['total_asset'])
