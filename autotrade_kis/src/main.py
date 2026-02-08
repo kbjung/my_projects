@@ -171,14 +171,17 @@ class TradingBot:
         print(" [계좌 잔고 및 보유 종목]")
         print("-" * 60)
         
-        balance = self.orders.get_balance()
-        if not balance:
-            logger.warning("[EVENT] 계좌 정보 조회 실패: 토큰 재발급 후 재시도")
+        try:
+            balance = self.orders.get_balance()
+        except Exception as e:
+            logger.warning(f"[EVENT] 계좌 정보 조회 실패 (네트워크 오류 가능): {e}")
+            logger.info("토큰 재발급 후 재시도...")
             try:
                 self.auth.refresh_token()
-            except Exception as e:
-                logger.error(f"토큰 재발급 실패: {e}")
-            balance = self.orders.get_balance()
+                balance = self.orders.get_balance()
+            except Exception as retry_error:
+                logger.error(f"재시도 실패: {retry_error}")
+                balance = None
         if balance:
             cash_fmt = self._format_currency_kr(balance['cash'])
             asset_fmt = self._format_currency_kr(balance['total_asset'])
@@ -238,9 +241,13 @@ class TradingBot:
         print("\n" + "=" * 60)
         print(f" [REPORT] 일일 거래 리포트 ({current_time.strftime('%Y-%m-%d')})")
         print("=" * 60)
-        
+
         # 1. 당일 체결 내역
-        trades = self.orders.get_today_trades()
+        try:
+            trades = self.orders.get_today_trades()
+        except Exception as e:
+            logger.error(f"체결 내역 조회 실패 (네트워크 오류 가능): {e}")
+            trades = []
         # 시간 오름차순 정렬 (최신이 아래로)
         if trades:
             trades = sorted(trades, key=lambda t: t.get("time", ""))
@@ -293,7 +300,12 @@ class TradingBot:
         
         # 2. 계좌 잔고
         print("\n [2] 최종 계좌 잔고")
-        balance = self.orders.get_balance()
+        try:
+            balance = self.orders.get_balance()
+        except Exception as e:
+            logger.error(f"계좌 잔고 조회 실패 (네트워크 오류 가능): {e}")
+            balance = None
+
         if balance:
             cash_fmt = self._format_currency_kr(balance['cash'])
             asset_fmt = self._format_currency_kr(balance['total_asset'])
@@ -399,12 +411,15 @@ class TradingBot:
         if self._last_equity_update and (current_time - self._last_equity_update).total_seconds() < 300:
             return
 
-        balance = self.orders.get_balance()
-        if balance:
-            equity = balance.get("total_asset")
-            if equity is not None:
-                self.state.set_equity(float(equity))
-                self._last_equity_update = current_time
+        try:
+            balance = self.orders.get_balance()
+            if balance:
+                equity = balance.get("total_asset")
+                if equity is not None:
+                    self.state.set_equity(float(equity))
+                    self._last_equity_update = current_time
+        except Exception as e:
+            logger.warning(f"평가금 업데이트 실패 (네트워크 오류 가능): {e}")
 
     def _check_weekly_mode_switch(self):
         """주간 모드 전환 체크"""
@@ -659,7 +674,12 @@ class TradingBot:
             logger.info("기존 포지션 동기화 스킵: 이미 상태에 포지션 존재")
             return
 
-        balance = self.orders.get_balance()
+        try:
+            balance = self.orders.get_balance()
+        except Exception as e:
+            logger.error(f"기존 포지션 동기화 실패 (네트워크 오류 가능): {e}")
+            return
+
         if not balance or not balance.get("positions"):
             logger.info("기존 포지션 없음")
             return
