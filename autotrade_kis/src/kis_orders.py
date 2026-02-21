@@ -339,19 +339,33 @@ class KISOrders:
         tr_id: str,
         params: Optional[Dict] = None,
         json: Optional[Dict] = None,
-        timeout: int = 10
+        timeout: int = 10,
+        max_retries: int = 3
     ) -> requests.Response:
-        """요청 수행 (토큰 만료 시 1회 재시도)"""
+        """요청 수행 (네트워크 오류 시 재시도, 토큰 만료 시 1회 재시도)"""
         headers = self.auth.get_headers(tr_id=tr_id)
-        response = requests.request(method, url, headers=headers, params=params, json=json, timeout=timeout)
-
-        if response.status_code >= 400 and self._is_token_expired_response(response):
-            logger.warning("[EVENT] 토큰 만료 감지: 재발급 후 재시도")
-            self.auth.refresh_token()
-            headers = self.auth.get_headers(tr_id=tr_id)
-            response = requests.request(method, url, headers=headers, params=params, json=json, timeout=timeout)
-
-        return response
+        
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                response = requests.request(method, url, headers=headers, params=params, json=json, timeout=timeout)
+                
+                if response.status_code >= 400 and self._is_token_expired_response(response):
+                    logger.warning("[EVENT] 토큰 만료 감지: 재발급 후 재시도")
+                    self.auth.refresh_token()
+                    headers = self.auth.get_headers(tr_id=tr_id)
+                    response = requests.request(method, url, headers=headers, params=params, json=json, timeout=timeout)
+                
+                return response
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                last_exception = e
+                wait_time = 2 ** attempt  # 1초, 2초, 4초
+                logger.warning(f"[RETRY] 네트워크 오류 ({attempt+1}/{max_retries}): {type(e).__name__}. {wait_time}초 후 재시도...")
+                import time
+                time.sleep(wait_time)
+        
+        # 최대 재시도 초과 시 예외 발생
+        raise last_exception
 
     def _is_token_expired_response(self, response: requests.Response) -> bool:
         """토큰 만료 응답 여부"""
